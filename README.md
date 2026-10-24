@@ -24,7 +24,11 @@ bitsandbytes) and adds its own planning, data, eval, and export tooling.
 - **Export to real serving.** Merge the adapter and convert to GGUF for
   llama.cpp.
 
-## Install
+## Tested stack
+
+The one stack verified on real hardware (free Colab T4): trl 1.5.x, transformers 5.x, peft 0.21.0, torch 2.x. peft is pinned exactly - 0.21.2's LoRA module creation routes through torchao and fails on Colab's torchao 0.10.0 when loading adapters. Other versions may work; they are not verified.
+
+Install
 
 ```bash
 pip install -e .          # training stack
