@@ -1,8 +1,10 @@
 """SFT training entry: config -> trainer. Thin, explicit orchestration over
 transformers/peft/trl with tuneforge defaults; no hidden global state.
 
-API compatibility note: written against and smoke-verified with the stack
-trl 1.5.x / transformers 5.x / peft 0.21 (see pyproject pins). Key details:
+API compatibility note: written against the stack trl 1.5.x /
+transformers 5.x / peft 0.21.0 (see pyproject pins). The underlying
+training approach is proven on that stack; tuneforge's own end-to-end
+run on it is tracked as the toolkit's smoke test. Key details:
 - peft_config is handed to SFTTrainer (it wraps the model itself).
 - loss_type="nll": TRL 1.6+ defaults SFT loss to a chunked kernel whose
   fp32-out bf16 GEMM needs sm80+; free-tier T4 is sm75. Plain nll is the
