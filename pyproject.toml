@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tuneforge"
+version = "0.1.0"
+description = "Memory-efficient fine-tuning toolkit for open-weight LLMs: QLoRA training, VRAM planning, eval harness, and GGUF export"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+dependencies = [
+    "torch>=2.2",
+    "transformers>=4.51",
+    "peft>=0.13",
+    "trl>=0.11,<1.6",
+    "bitsandbytes>=0.43",
+    "accelerate>=0.34",
+    "datasets>=2.20",
+    "safetensors>=0.4",
+]
+
+[project.optional-dependencies]
+export = ["llama-cpp-python>=0.2"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+tuneforge = "tuneforge.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["tuneforge*"]
