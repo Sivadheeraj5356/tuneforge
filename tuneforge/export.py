@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 
 
 def merge_adapter(base: str, adapter: str, out_dir: str) -> str:
@@ -18,7 +19,11 @@ def merge_adapter(base: str, adapter: str, out_dir: str) -> str:
     model = PeftModel.from_pretrained(model, adapter)
     model = model.merge_and_unload()
     model.save_pretrained(out_dir, safe_serialization=True)
-    AutoTokenizer.from_pretrained(adapter or base).save_pretrained(out_dir)
+    try:
+        tok = AutoTokenizer.from_pretrained(adapter)
+    except (OSError, ValueError):
+        tok = AutoTokenizer.from_pretrained(base)  # adapter without tokenizer files
+    tok.save_pretrained(out_dir)
     return out_dir
 
 
@@ -32,7 +37,7 @@ def to_gguf(merged_dir: str, out_file: str, quant: str = "q4_k_m",
             f"llama.cpp converter not found at {convert}; "
             "clone https://github.com/ggml-org/llama.cpp first")
     f16 = out_file.replace(".gguf", ".f16.gguf")
-    subprocess.run(["python", convert, merged_dir, "--outfile", f16,
+    subprocess.run([sys.executable, convert, merged_dir, "--outfile", f16,
                     "--outtype", "f16"], check=True)
     quant_bin = os.path.join(llama_cpp_dir, "build", "bin", "llama-quantize")
     if os.path.exists(quant_bin) and quant != "f16":
