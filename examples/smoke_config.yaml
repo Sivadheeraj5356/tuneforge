@@ -1,0 +1,24 @@
+# Verified smoke config (free Colab T4, 2026-10-25): 20 steps in ~82 s.
+# batch 2 x seq 512 - smaller than the `tuneforge plan` default estimate
+# (batch 4 x seq 1024), so the planner's activation number overestimates
+# this run.
+model: Qwen/Qwen3-1.7B
+dataset: local:smoke_rows.jsonl
+output_dir: runs/smoke
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+load_in_4bit: true
+learning_rate: 0.0002
+epochs: 1.0
+max_steps: 20
+per_device_batch_size: 2
+grad_accum: 2
+max_seq_len: 512
+warmup_ratio: 0.03
+logging_steps: 5
+save_steps: 20
+seed: 42
+gradient_checkpointing: true
+packing: false
+text_field: text
