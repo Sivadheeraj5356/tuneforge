@@ -26,17 +26,44 @@ bitsandbytes) and adds its own planning, data, eval, and export tooling.
 
 ## Tested stack
 
-The one stack verified on real hardware (free Colab T4): trl 1.5.x, transformers 5.x, peft 0.21.0, torch 2.x. peft is pinned exactly - 0.21.2's LoRA module creation routes through torchao and fails on Colab's torchao 0.10.0 when loading adapters. Other versions may work; they are not verified.
+Verified end-to-end on a free Colab T4 (sm75) on 2026-10-25: torch 2.11.0+cu130,
+transformers 5.20.2, peft==0.21.0, trl==1.5.1, bitsandbytes 0.50.2, datasets,
+accelerate. "Verified" means: `tuneforge plan` -> 200-row data prep -> 20-step
+4-bit QLoRA train (batch 2 x seq 512) -> adapter save -> merge export to a full
+3.44 GB bf16 model. Train loss fell 1.88 -> 0.70 over the 20 steps at ~4.1
+s/step. GGUF conversion and merged-model inference quality are not part of this
+verification yet.
+
+Two Colab landmines, both hit and worked around in the verified run:
+
+- peft is pinned to exactly 0.21.0: 0.21.2's LoRA module creation routes
+  through torchao and fails on Colab's preinstalled torchao 0.10.0 when loading
+  adapters.
+- On 0.21.0 too, loading a saved adapter dispatches through peft's torchao
+  availability check, which raises on torchao < 0.16. Fix:
+  `pip uninstall torchao` (tuneforge never uses torchao quantization) or
+  upgrade torchao to >= 0.16.
 
 Install
 
 ```bash
-pip install -e .          # training stack
+pip install -e .          # training stack (torch, transformers, trl, peft, bitsandbytes, ...)
 pip install -e .[dev]     # + tests
 ```
 
+On a fresh Colab runtime a clean `pip install -e .` covers everything - the two
+packages Colab lacks are trl and bitsandbytes, both declared in pyproject.
 Planning, config, data utilities, and tests run without torch or a GPU.
 Training/export need a CUDA GPU.
+
+Reproduce the ~3-minute smoke run (free T4):
+
+```bash
+pip uninstall -y torchao   # Colab workaround, see above
+python examples/prep_smoke.py --rows 200 --out smoke_rows.jsonl
+tuneforge train --config examples/smoke_config.yaml
+tuneforge export --base Qwen/Qwen3-1.7B --adapter runs/smoke --merged-out runs/smoke_merged
+```
 
 ## Quickstart
 
@@ -100,6 +127,9 @@ tuneforge export --base Qwen/Qwen3-1.7B --adapter runs/qwen3-sql \
   `tuneforge/vram.py`. Measure your own run before quoting them.
 - No speedup claims. If a benchmark ever ships here, it will come with the
   script and hardware it was measured on.
+- Merge export (`--merged-out`) is verified on the stack above. GGUF
+  conversion (`--gguf-out`, needs `pip install -e .[export]`) and merged-model
+  inference quality are not covered by an end-to-end run yet.
 
 ## Reference deployment
 
