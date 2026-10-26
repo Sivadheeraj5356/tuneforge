@@ -127,9 +127,16 @@ tuneforge export --base Qwen/Qwen3-1.7B --adapter runs/qwen3-sql \
   `tuneforge/vram.py`. Measure your own run before quoting them.
 - No speedup claims. If a benchmark ever ships here, it will come with the
   script and hardware it was measured on.
-- Merge export (`--merged-out`) is verified on the stack above. GGUF
-  conversion (`--gguf-out`, needs `pip install -e .[export]`) and merged-model
-  inference quality are not covered by an end-to-end run yet.
+- Train (`tuneforge train`) and merge export (`--merged-out`) each have two
+  verified end-to-end runs: a real QLoRA smoke on a free Colab T4
+  (2026-10-25: Qwen3-1.7B, 200 rows, 20 steps, 82.4s, adapter + fp16 merged
+  export) and a CPU run on a tiny random Qwen3-architecture model
+  (2026-10-26: loss decreasing over 6 steps, adapter saved, merge verified
+  to fold LoRA deltas into the target-module weights). GGUF conversion
+  (`--gguf-out`, needs `pip install -e .[export]`) is validated on the
+  synthetic tiny model only (merge -> F16 -> Q4_K_M -> llama.cpp loads and
+  generates). Merged-model inference quality on a real base is not covered
+  by an end-to-end run yet.
 
 ## Reference deployment
 
