@@ -47,5 +47,27 @@ examples/text2sql_eval.py runs end-to-end on CPU with the tiny model
 (scorers sanity-checked: gold-as-pred passes sql_exact_match and
 exec_match).
 
-Not covered by any run: merged-model inference quality on a real base
-(weights/adapter gated on a valid HF token + GPU window).
+2026-11-06 - real full chain (free Colab T4, Qwen/Qwen3-1.7B, $0)
+
+# prep: train_rows.jsonl (1500 rows, 1459 schemas), held_out.json
+# (400 rows, 384 schemas, zero overlap)
+# plan: 1.87 GB vs GPU 15.0 GB -> FITS (headroom 13.13 GB)
+# train: 300 QLoRA steps, batch 2 x seq 512, train_loss 0.5493,
+# mean token acc ~0.87; adapter runs/text2sql_real
+tuneforge eval runs/base_scores.json runs/tuned_scores.json
+# eval (n=100 held-out): base exact_match 0.08, exec 0.30;
+# tuned exact_match 0.33, exec 0.53 (delta +0.25 / +0.23)
+tuneforge export --base Qwen/Qwen3-1.7B --adapter runs/text2sql_real \
+  --merged-out runs/text2sql_merged --gguf-out runs/qwen3-1.7b-text2sql-q4_k_m.gguf
+# GGUF Q4_K_M: 1,107,408,736 bytes
+# llama.cpp (rev 18ab62a) load check: correct SQL on a held-out
+# TransitUsers prompt:
+#   SELECT SUM(usage) FROM TransitUsers WHERE city IN ('Los Angeles', 'San Francisco');
+# (~27.5 t/s prompt, ~6.2 t/s gen, CPU; note: --no-conversation was
+# removed upstream, use --single-turn)
+# artifacts (private): https://huggingface.co/sivadheeraj5356/tuneforge-qwen3-1.7b-text2sql
+# (adapter, Q4_K_M GGUF, eval_scores.json, held_out.json, run.log,
+# train_config.yaml)
+
+This closes the previous gap: merged-model inference quality on a real
+base is now covered by an end-to-end run.
