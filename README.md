@@ -31,8 +31,9 @@ transformers 5.20.2, peft==0.21.0, trl==1.5.1, bitsandbytes 0.50.2, datasets,
 accelerate. "Verified" means: `tuneforge plan` -> 200-row data prep -> 20-step
 4-bit QLoRA train (batch 2 x seq 512) -> adapter save -> merge export to a full
 3.44 GB bf16 model. Train loss fell 1.88 -> 0.70 over the 20 steps at ~4.1
-s/step. GGUF conversion and merged-model inference quality are not part of this
-verification yet.
+s/step. A full real-weight run (train -> held-out eval -> GGUF -> llama.cpp load
+check) followed on 2026-11-06 - see Reference deployment and
+examples/VALIDATION.md.
 
 Two Colab landmines, both hit and worked around in the verified run:
 
@@ -133,16 +134,23 @@ tuneforge export --base Qwen/Qwen3-1.7B --adapter runs/qwen3-sql \
   export) and a CPU run on a tiny random Qwen3-architecture model
   (2026-10-26: loss decreasing over 6 steps, adapter saved, merge verified
   to fold LoRA deltas into the target-module weights). GGUF conversion
-  (`--gguf-out`, needs `pip install -e .[export]`) is validated on the
-  synthetic tiny model only (merge -> F16 -> Q4_K_M -> llama.cpp loads and
-  generates). Merged-model inference quality on a real base is not covered
-  by an end-to-end run yet.
+  (`--gguf-out`, needs `pip install -e .[export]`) is additionally verified
+  on real weights (2026-11-06): merge -> Q4_K_M (1.11 GB) -> llama.cpp
+  loads the GGUF and generates correct SQL on a held-out prompt. The
+  earlier synthetic-tiny-model check (merge -> F16 -> Q4_K_M) covered the
+  mechanics with random weights.
 
 ## Reference deployment
 
-Developed alongside a real project: QLoRA fine-tune of Qwen3-1.7B on
-text-to-SQL (6000 train rows, 300 schema-held-out rows, zero schema overlap),
-trained on a free Colab T4. See `examples/`.
+Verified end-to-end on a free Colab T4 on 2026-11-06 ($0): QLoRA fine-tune
+of Qwen/Qwen3-1.7B on text-to-SQL (1500 train rows / 1459 schemas, 400
+schema-held-out rows / 384 schemas, zero overlap), 300 steps, train_loss
+0.5493. Held-out eval, n=100: base exact_match 0.08 / execution accuracy
+0.30, tuned exact_match 0.33 / execution accuracy 0.53. Exported Q4_K_M
+GGUF (1,107,408,736 bytes) loads in llama.cpp and generates correct SQL on
+a held-out prompt. Artifacts (adapter, GGUF, eval scores, run log):
+https://huggingface.co/sivadheeraj5356/tuneforge-qwen3-1.7b-text2sql
+(private). Mechanics record: `examples/VALIDATION.md`.
 
 ## License
 
