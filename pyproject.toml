@@ -10,10 +10,11 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 dependencies = [
+    "PyYAML>=6.0",
     "torch>=2.2",
     "transformers>=4.51",
-    "peft==0.21.0",  # 0.21.0 tested end-to-end on Colab T4; 0.21.2 adapter load breaks on torchao<0.16
-    "trl>=0.11,<1.6",
+    "peft==0.21.0",
+    "trl>=1.5.1,<1.6",
     "bitsandbytes>=0.43",
     "accelerate>=0.34",
     "datasets>=2.20",
