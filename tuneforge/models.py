@@ -1,30 +1,30 @@
-"""Model + adapter loading. Everything heavy (torch/transformers/peft) is
-imported inside functions so the package stays importable without a GPU stack.
-"""
 from __future__ import annotations
 
 from tuneforge.config import TrainConfig
 
 
 def load_base(cfg: TrainConfig):
-    """Load the base model, NF4-quantized when cfg.load_in_4bit, with
-    gradient checkpointing for training."""
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
+    cuda = torch.cuda.is_available()
+    dtype = torch.bfloat16 if cuda and torch.cuda.is_bf16_supported() else (
+        torch.float16 if cuda else torch.float32)
+    if cfg.load_in_4bit and not cuda:
+        raise ValueError("4-bit training requires CUDA; set load_in_4bit: false on CPU")
     quant = None
     if cfg.load_in_4bit:
         quant = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_compute_dtype=dtype,
             bnb_4bit_use_double_quant=True,
         )
     model = AutoModelForCausalLM.from_pretrained(
         cfg.model,
         quantization_config=quant,
-        dtype=None if quant else torch.bfloat16,
-        device_map="auto",
+        dtype=dtype,
+        device_map={"": torch.cuda.current_device()} if cuda else None,
     )
     if cfg.gradient_checkpointing:
         model.gradient_checkpointing_enable()
@@ -36,7 +36,6 @@ def load_base(cfg: TrainConfig):
 
 
 def add_adapter(model, cfg: TrainConfig):
-    """Attach a fresh LoRA adapter per the config."""
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
     if cfg.load_in_4bit:
@@ -58,7 +57,6 @@ def add_adapter(model, cfg: TrainConfig):
 
 
 def load_for_inference(base: str, adapter: str | None = None):
-    """Load base (+ optional trained adapter) for generation/eval."""
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -69,7 +67,28 @@ def load_for_inference(base: str, adapter: str | None = None):
     if adapter:
         from peft import PeftModel
         model = PeftModel.from_pretrained(model, adapter)
-    tok = AutoTokenizer.from_pretrained(adapter or base)
+    model.eval()
+    try:
+        tok = AutoTokenizer.from_pretrained(adapter or base)
+    except (OSError, ValueError):
+        if not adapter:
+            raise
+        tok = AutoTokenizer.from_pretrained(base)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
     return model, tok
+
+
+def generate(base: str, prompt: str, adapter: str | None = None,
+             max_new_tokens: int = 128) -> str:
+    if type(max_new_tokens) is not int or max_new_tokens < 1:
+        raise ValueError("max_new_tokens must be a positive integer")
+    import torch
+
+    model, tok = load_for_inference(base, adapter)
+    inputs = tok(prompt, return_tensors="pt").to(model.device)
+    with torch.no_grad():
+        out = model.generate(**inputs, max_new_tokens=max_new_tokens,
+                             do_sample=False, pad_token_id=tok.pad_token_id)
+    new_tokens = out[0][inputs["input_ids"].shape[1]:]
+    return tok.decode(new_tokens, skip_special_tokens=True)
