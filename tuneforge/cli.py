@@ -1,8 +1,9 @@
-"""tuneforge CLI: plan, train, eval, export."""
 from __future__ import annotations
 
 import argparse
 import sys
+
+from tuneforge import __version__
 
 
 def _cmd_plan(args) -> int:
@@ -45,8 +46,10 @@ def _cmd_train(args) -> int:
 def _cmd_eval(args) -> int:
     from tuneforge.evals import compare_runs
     import json
-    base = json.load(open(args.base_scores))
-    tuned = json.load(open(args.tuned_scores))
+    with open(args.base_scores) as f:
+        base = json.load(f)
+    with open(args.tuned_scores) as f:
+        tuned = json.load(f)
     print(json.dumps(compare_runs(base, tuned), indent=2))
     return 0
 
@@ -62,9 +65,18 @@ def _cmd_export(args) -> int:
     return 0
 
 
+def _cmd_generate(args) -> int:
+    from tuneforge.models import generate
+    print(generate(args.base, args.prompt, adapter=args.adapter,
+                   max_new_tokens=args.max_new_tokens))
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="tuneforge",
         description="Memory-efficient LLM fine-tuning toolkit")
+    ap.add_argument("--version", action="version",
+                    version=f"tuneforge {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("plan", help="estimate VRAM for a training plan")
@@ -99,8 +111,19 @@ def main(argv=None) -> int:
     x.add_argument("--llama-cpp", default="llama.cpp")
     x.set_defaults(fn=_cmd_export)
 
+    g = sub.add_parser("generate", help="run one prompt through base or tuned model")
+    g.add_argument("--base", required=True)
+    g.add_argument("--adapter")
+    g.add_argument("--prompt", required=True)
+    g.add_argument("--max-new-tokens", type=int, default=128)
+    g.set_defaults(fn=_cmd_generate)
+
     args = ap.parse_args(argv)
-    return args.fn(args)
+    try:
+        return args.fn(args)
+    except (ValueError, TypeError, OSError, KeyError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
