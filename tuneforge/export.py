@@ -1,16 +1,12 @@
-"""Export trained adapters: merge into the base model and convert to GGUF
-for llama.cpp serving. Heavy deps load lazily; the merge plan is computed
-without torch so it can be validated anywhere.
-"""
 from __future__ import annotations
 
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 
 def merge_adapter(base: str, adapter: str, out_dir: str) -> str:
-    """Merge a LoRA adapter into base weights (fp16) and save."""
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from peft import PeftModel
@@ -22,27 +18,34 @@ def merge_adapter(base: str, adapter: str, out_dir: str) -> str:
     try:
         tok = AutoTokenizer.from_pretrained(adapter)
     except (OSError, ValueError):
-        tok = AutoTokenizer.from_pretrained(base)  # adapter without tokenizer files
+        tok = AutoTokenizer.from_pretrained(base)
     tok.save_pretrained(out_dir)
     return out_dir
 
 
 def to_gguf(merged_dir: str, out_file: str, quant: str = "q4_k_m",
             llama_cpp_dir: str = "llama.cpp") -> str:
-    """Convert a merged HF model dir to GGUF via llama.cpp's converter, then
-    quantize. Requires a local llama.cpp checkout (see scripts)."""
     convert = os.path.join(llama_cpp_dir, "convert_hf_to_gguf.py")
     if not os.path.exists(convert):
         raise FileNotFoundError(
             f"llama.cpp converter not found at {convert}; "
             "clone https://github.com/ggml-org/llama.cpp first")
-    f16 = out_file.replace(".gguf", ".f16.gguf")
+    output = Path(out_file)
+    source = Path(merged_dir).resolve()
+    if output.resolve().is_relative_to(source):
+        raise ValueError("GGUF output must be outside the merged model directory")
+    f16 = str(output.with_name(output.stem + ".f16.gguf")) if quant.lower() != "f16" else str(output)
+    quant_bin = os.path.join(llama_cpp_dir, "build", "bin", "llama-quantize")
+    if quant.lower() != "f16" and not os.path.isfile(quant_bin):
+        raise FileNotFoundError(f"quantizer not found at {quant_bin}; build llama.cpp first")
+    output.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([sys.executable, convert, merged_dir, "--outfile", f16,
                     "--outtype", "f16"], check=True)
-    quant_bin = os.path.join(llama_cpp_dir, "build", "bin", "llama-quantize")
-    if os.path.exists(quant_bin) and quant != "f16":
-        subprocess.run([quant_bin, f16, out_file, quant.upper()], check=True)
+    if quant.lower() != "f16":
+        subprocess.run([quant_bin, f16, str(output), quant.upper()], check=True)
+        if not output.is_file():
+            raise RuntimeError("quantizer did not create the requested GGUF")
         os.remove(f16)
-    else:
-        out_file = f16
-    return out_file
+    if not output.is_file():
+        raise RuntimeError("converter did not create the requested GGUF")
+    return str(output)
