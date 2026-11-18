@@ -6,7 +6,9 @@ TuneForge is an independent project in the same problem space as [Unsloth](https
 
 ## Semester evaluation: start here
 
-The project is a command-line toolkit, not a hosted website. No API key or paid service is needed for the CPU demonstration.
+The Python toolkit has a hosted browser workbench at https://tuneforge-web.vercel.app/. No API key or paid service is needed for the CPU demonstration.
+
+The UI provides a working VRAM planner, local JSON/JSONL data validation, YAML configuration download, score comparison and export commands. It does not run training on a server. GPU training still runs in your own Python environment or Colab when a free GPU is available. To serve the UI locally, run `python -m http.server 8080 --directory web` and open http://localhost:8080.
 
 ```bash
 git clone https://github.com/Sivadheeraj5356/tuneforge.git
@@ -97,7 +99,7 @@ A missing quantizer now fails explicitly instead of silently returning an unquan
 
 Implemented: memory planning, validated config loading, local/Hugging Face datasets, LoRA/QLoRA training, score comparison, base/adapter generation, model merge and llama.cpp conversion orchestration.
 
-Not implemented: custom CUDA kernels, Unsloth-equivalent acceleration, distributed training orchestration, a web UI, hosted inference, or one-click GPU provisioning. This is a small independent fine-tuning project, not a replacement for every Unsloth feature.
+Not implemented: custom CUDA kernels, Unsloth-equivalent acceleration, distributed training orchestration, hosted GPU training, hosted inference, or one-click GPU provisioning. This is a small independent fine-tuning project, not a replacement for every Unsloth feature.
 
 ## License
 
