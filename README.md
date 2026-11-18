@@ -1,158 +1,104 @@
-# tuneforge
+# TuneForge
 
-Memory-efficient fine-tuning toolkit for open-weight LLMs. Plan the VRAM,
-train a QLoRA adapter, evaluate base vs tuned, export to GGUF - one small,
-readable codebase instead of scattered notebooks.
+A fine-tuning toolkit for open-weight language models: estimate memory, prepare data, train a LoRA/QLoRA adapter, compare evaluation scores, generate text and export a merged model or GGUF.
 
-Inspired by the same problem space as [Unsloth](https://github.com/unslothai/unsloth)
-(Apache-2.0): making LLM fine-tuning fit on free and cheap GPUs. tuneforge is
-an independent implementation - no Unsloth code, branding, or performance
-claims. It orchestrates the standard OSS stack (transformers, peft, trl,
-bitsandbytes) and adds its own planning, data, eval, and export tooling.
+TuneForge is an independent project in the same problem space as [Unsloth](https://github.com/unslothai/unsloth). It uses Transformers, PEFT, TRL and bitsandbytes. It does not copy Unsloth's code or implement its custom GPU kernels. It makes no speedup or feature-parity claim.
 
-## Why
+## Semester evaluation: start here
 
-- **Know before you train.** `tuneforge plan` estimates peak VRAM (weights,
-  optimizer, gradients, activations) and tells you which knob to turn when a
-  plan doesn't fit - before you burn an hour of free-GPU quota.
-- **Sane QLoRA defaults.** NF4 4-bit base weights, paged optimizers, gradient
-  checkpointing, LoRA on all projections. Small models train on a free Colab
-  T4.
-- **Evaluation is a first-class step.** Held-out splitting that blocks
-  near-duplicate leakage, exact-match scorers, and a base-vs-tuned comparison
-  table so "did fine-tuning help?" has a number, not a vibe.
-- **Export to real serving.** Merge the adapter and convert to GGUF for
-  llama.cpp.
-
-## Tested stack
-
-Verified end-to-end on a free Colab T4 (sm75) on 2026-10-25: torch 2.11.0+cu130,
-transformers 5.20.2, peft==0.21.0, trl==1.5.1, bitsandbytes 0.50.2, datasets,
-accelerate. "Verified" means: `tuneforge plan` -> 200-row data prep -> 20-step
-4-bit QLoRA train (batch 2 x seq 512) -> adapter save -> merge export to a full
-3.44 GB bf16 model. Train loss fell 1.88 -> 0.70 over the 20 steps at ~4.1
-s/step. A full real-weight run (train -> held-out eval -> GGUF -> llama.cpp load
-check) followed on 2026-11-06 - see Reference deployment and
-examples/VALIDATION.md.
-
-Two Colab landmines, both hit and worked around in the verified run:
-
-- peft is pinned to exactly 0.21.0: 0.21.2's LoRA module creation routes
-  through torchao and fails on Colab's preinstalled torchao 0.10.0 when loading
-  adapters.
-- On 0.21.0 too, loading a saved adapter dispatches through peft's torchao
-  availability check, which raises on torchao < 0.16. Fix:
-  `pip uninstall torchao` (tuneforge never uses torchao quantization) or
-  upgrade torchao to >= 0.16.
-
-Install
+The project is a command-line toolkit, not a hosted website. No API key or paid service is needed for the CPU demonstration.
 
 ```bash
-pip install -e .          # training stack (torch, transformers, trl, peft, bitsandbytes, ...)
-pip install -e .[dev]     # + tests
+git clone https://github.com/Sivadheeraj5356/tuneforge.git
+cd tuneforge
+python -m pip install -e '.[dev]'
+python -m pytest -q
+python examples/cpu_demo.py
 ```
 
-On a fresh Colab runtime a clean `pip install -e .` covers everything - the two
-packages Colab lacks are trl and bitsandbytes, both declared in pyproject.
-Planning, config, data utilities, and tests run without torch or a GPU.
-Training/export need a CUDA GPU.
+The repository is private, so cloning requires an account with access. Model training in the CPU demo itself is entirely local.
 
-Reproduce the ~3-minute smoke run (free T4):
+The demo creates a tiny randomly initialized Qwen3-architecture model and a local tokenizer, trains a LoRA adapter for two steps on eight synthetic SQL examples, reloads the adapter for generation, and saves a merged model. Outputs are in `runs/cpu-demo/`. It ends with `CPU demo complete`. This demonstrates the real pipeline, not useful SQL ability. Random-model generation is not a quality benchmark.
+
+Suggested demonstration order:
+
+1. Run `tuneforge --help` and explain the workflow.
+2. Run `tuneforge plan Qwen/Qwen3-1.7B --gpu-gb 16` to inspect the memory estimate.
+3. Run the tests and CPU demo above. Show the saved adapter and merged-model directories.
+4. Explain the separate real-model results below and their limitations.
+
+## Results and verification
+
+| Check | Result | Meaning |
+| --- | --- | --- |
+| November 19, 2026 regression suite | 50 tests passed on Python 3.10 | Config, CLI, memory planning, data utilities, scoring, GPU dtype selection and export failure paths |
+| November 19, 2026 CPU demonstration | Train, adapter save/reload, generation and merge passed | Tiny random model, mechanics only; no GPU and no quality claim |
+| November 6, 2026 recorded real-model run | Base execution accuracy 0.30, tuned 0.53 on 100 held-out examples | Qwen3-1.7B text-to-SQL, free Colab T4; not rerun by the November 19 CPU checks |
+| Same real-model run | Exact match 0.08 to 0.33; Q4_K_M GGUF 1,107,408,736 bytes | Historical run evidence, not a general performance guarantee |
+
+The recorded real run used 1,500 training rows across 1,459 schemas and 400 schema-held-out rows across 384 schemas, with no schema overlap. Evaluation sampled 100 held-out rows. Training ran for 300 steps with final train loss 0.5493. The exported GGUF was loaded in llama.cpp and generated SQL on a held-out prompt. The execution scorer uses generated database contexts, not a production SQL benchmark.
+
+The private artifact repository holds the adapter, GGUF, evaluation scores and run log:
+https://huggingface.co/sivadheeraj5356/tuneforge-qwen3-1.7b-text2sql
+
+Historical commands and results are in [examples/VALIDATION.md](examples/VALIDATION.md). Access to the private artifacts is separate from access to this code repository. Do not claim that the CPU demo reproduces the real-model accuracy numbers.
+
+## Training a real model
+
+The tested library API is Transformers 5.20.2, PEFT 0.21.0 and TRL 1.5.1. November 19 CPU verification used PyTorch 2.14.1+cpu. The earlier T4 run used PyTorch 2.11.0+cu130 and bitsandbytes 0.50.2. Hardware and library differences can affect results.
+
+Prepare the example data and train on a CUDA GPU:
 
 ```bash
-pip uninstall -y torchao   # Colab workaround, see above
 python examples/prep_smoke.py --rows 200 --out smoke_rows.jsonl
-tuneforge train --config examples/smoke_config.yaml
-tuneforge export --base Qwen/Qwen3-1.7B --adapter runs/smoke --merged-out runs/smoke_merged
-```
-
-## Quickstart
-
-Check the plan fits your GPU:
-
-```bash
 tuneforge plan Qwen/Qwen3-1.7B --gpu-gb 16
-#   weights: 0.90 GB (NF4)  optimizer: 0.05  gradients: 0.03  activations: 3.55
-#   total: 4.53 GB vs GPU 16.0 GB -> FITS (headroom 11.47 GB)
+tuneforge train --config examples/smoke_config.yaml
 ```
 
-Train (config YAML):
+Data preparation downloads a public Hugging Face dataset. The default 4-bit configuration needs CUDA. CPU training must set `load_in_4bit: false`; use the small CPU demo rather than loading a full model on a low-memory machine.
 
-```yaml
-model: Qwen/Qwen3-1.7B
-dataset: gretelai/synthetic_text_to_sql
-output_dir: runs/qwen3-sql
-lora_r: 16
-lora_alpha: 32
-load_in_4bit: true
-per_device_batch_size: 4
-grad_accum: 4
-max_seq_len: 1024
-learning_rate: 2e-4
-```
+Training settings are in `TrainConfig`: model, dataset, output directory, adapter rank/alpha/dropout, target modules, batch size, gradient accumulation, sequence length, learning rate, epochs or maximum steps, and packing. JSON and YAML configs are supported. Local datasets use `local:path.jsonl` or `local:path.json`, with `prompt` and `completion` fields by default. For raw-text SFT, set `text_field` to the dataset's text field.
+
+Packing is delegated to TRL once, using token lengths. Precision is selected by GPU support: BF16 where supported, FP16 on other CUDA GPUs, FP32 on CPU. Quantized training uses paged 8-bit AdamW. The planner reports estimates, not measured peak VRAM; it does not guarantee that a run will fit.
+
+Some Colab installations contain incompatible `torchao` versions. TuneForge does not use torchao quantization. The earlier verified run required uninstalling torchao or updating it to a compatible version; inspect the error and your environment before changing installed packages.
+
+## Generate and evaluate
 
 ```bash
-tuneforge train --config train.yaml
-```
+tuneforge generate --base Qwen/Qwen3-1.7B --adapter runs/smoke \
+  --prompt 'Write SQL to select all rows from users:' --max-new-tokens 64
 
-Or from Python:
-
-```python
-from tuneforge import TrainConfig
-from tuneforge.train import train
-
-cfg = TrainConfig(model="Qwen/Qwen3-1.7B",
-                  dataset="gretelai/synthetic_text_to_sql")
-train(cfg)   # adapter lands in cfg.output_dir
-```
-
-Evaluate base vs tuned (see `examples/text2sql_eval.py` for a complete
-held-out harness with exact-match and sandboxed SQL execution accuracy):
-
-```bash
 tuneforge eval base_scores.json tuned_scores.json
 ```
 
-Export for llama.cpp:
+`eval` compares numeric metrics in two score JSON files. It does not run model generation itself. [examples/text2sql_eval.py](examples/text2sql_eval.py) is the task-specific generation/scoring example. Use the same held-out prompts for base and tuned models. Group the split by schema or another task-specific key to avoid overlap; the generic split helper does not detect arbitrary semantic duplicates.
+
+## Export
+
+Merge the adapter into the base model:
 
 ```bash
-tuneforge export --base Qwen/Qwen3-1.7B --adapter runs/qwen3-sql \
-  --merged-out runs/qwen3-sql-merged --gguf-out qwen3-sql.q4_k_m.gguf
+tuneforge export --base Qwen/Qwen3-1.7B --adapter runs/smoke \
+  --merged-out runs/smoke-merged
 ```
 
-## What it does and doesn't claim
+For GGUF, separately clone and build [llama.cpp](https://github.com/ggml-org/llama.cpp) using its instructions, and install its converter requirements. The converter and `build/bin/llama-quantize` binary must exist. Installing `llama-cpp-python` alone does not provide that checkout.
 
-- It uses battle-tested libraries for the math (peft/bitsandbytes/trl); its
-  own code is the planning, data, eval, and export layers.
-- Memory numbers from `plan` are estimates with the model documented in
-  `tuneforge/vram.py`. Measure your own run before quoting them.
-- No speedup claims. If a benchmark ever ships here, it will come with the
-  script and hardware it was measured on.
-- Train (`tuneforge train`) and merge export (`--merged-out`) each have two
-  verified end-to-end runs: a real QLoRA smoke on a free Colab T4
-  (2026-10-25: Qwen3-1.7B, 200 rows, 20 steps, 82.4s, adapter + fp16 merged
-  export) and a CPU run on a tiny random Qwen3-architecture model
-  (2026-10-26: loss decreasing over 6 steps, adapter saved, merge verified
-  to fold LoRA deltas into the target-module weights). GGUF conversion
-  (`--gguf-out`, needs `pip install -e .[export]`) is additionally verified
-  on real weights (2026-11-06): merge -> Q4_K_M (1.11 GB) -> llama.cpp
-  loads the GGUF and generates correct SQL on a held-out prompt. The
-  earlier synthetic-tiny-model check (merge -> F16 -> Q4_K_M) covered the
-  mechanics with random weights.
+```bash
+tuneforge export --base Qwen/Qwen3-1.7B --adapter runs/smoke \
+  --merged-out runs/smoke-merged --gguf-out runs/smoke.q4_k_m.gguf \
+  --llama-cpp llama.cpp --quant q4_k_m
+```
 
-## Reference deployment
+A missing quantizer now fails explicitly instead of silently returning an unquantized F16 file. GGUF output must be outside the merged-model directory. Use `--quant f16` to request an unquantized GGUF. November 19 export regression tests mock converter processes; real-weight GGUF validation is the separately recorded November 6 run.
 
-Verified end-to-end on a free Colab T4 on 2026-11-06 ($0): QLoRA fine-tune
-of Qwen/Qwen3-1.7B on text-to-SQL (1500 train rows / 1459 schemas, 400
-schema-held-out rows / 384 schemas, zero overlap), 300 steps, train_loss
-0.5493. Held-out eval, n=100: base exact_match 0.08 / execution accuracy
-0.30, tuned exact_match 0.33 / execution accuracy 0.53. Exported Q4_K_M
-GGUF (1,107,408,736 bytes) loads in llama.cpp and generates correct SQL on
-a held-out prompt. Artifacts (adapter, GGUF, eval scores, run log):
-https://huggingface.co/sivadheeraj5356/tuneforge-qwen3-1.7b-text2sql
-(private). Mechanics record: `examples/VALIDATION.md`.
+## Scope
+
+Implemented: memory planning, validated config loading, local/Hugging Face datasets, LoRA/QLoRA training, score comparison, base/adapter generation, model merge and llama.cpp conversion orchestration.
+
+Not implemented: custom CUDA kernels, Unsloth-equivalent acceleration, distributed training orchestration, a web UI, hosted inference, or one-click GPU provisioning. This is a small independent fine-tuning project, not a replacement for every Unsloth feature.
 
 ## License
 
-Apache-2.0. Component licenses: model weights and datasets carry their own
-licenses - check each model/dataset card before training or redistributing.
+Apache-2.0. Model weights, datasets and dependencies have their own licenses. Check their terms before redistributing trained artifacts.
