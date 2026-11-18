@@ -1,20 +1,15 @@
-"""Training configuration: one dataclass, YAML/JSON round-trip, validation.
-
-Pure stdlib so configs can be built, checked, and diffed anywhere, including
-machines without a GPU or torch installed.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 import json
+import math
 
 
 @dataclass
 class TrainConfig:
-    model: str                                  # HF id or local path
-    dataset: str                                # HF id, or local:/path.jsonl
+    model: str
+    dataset: str
     output_dir: str = "runs/tune"
-    # LoRA
     lora_r: int = 16
     lora_alpha: int = 32
     lora_dropout: float = 0.05
@@ -22,11 +17,10 @@ class TrainConfig:
         "q_proj", "k_proj", "v_proj", "o_proj",
         "gate_proj", "up_proj", "down_proj",
     )
-    load_in_4bit: bool = True                   # QLoRA-style NF4 base weights
-    # optimization
+    load_in_4bit: bool = True
     learning_rate: float = 2e-4
     epochs: float = 1.0
-    max_steps: int = -1                         # -1 = use epochs
+    max_steps: int = -1
     per_device_batch_size: int = 4
     grad_accum: int = 4
     max_seq_len: int = 1024
@@ -36,25 +30,38 @@ class TrainConfig:
     seed: int = 42
     gradient_checkpointing: bool = True
     packing: bool = False
-    # data mapping: which record fields form prompt/completion
     prompt_field: str = "prompt"
     completion_field: str = "completion"
-    text_field: str | None = None               # set for raw-text SFT instead
+    text_field: str | None = None
 
     def validate(self) -> list[str]:
         errs: list[str] = []
-        if self.lora_r < 1:
-            errs.append("lora_r must be >= 1")
-        if not (0.0 <= self.lora_dropout < 1.0):
+        for name in ("model", "dataset", "output_dir"):
+            if not isinstance(getattr(self, name), str) or not getattr(self, name).strip():
+                errs.append(f"{name} must be a nonempty string")
+        for name in ("lora_r", "lora_alpha", "per_device_batch_size", "grad_accum",
+                     "logging_steps", "save_steps"):
+            value = getattr(self, name)
+            if type(value) is not int or value < 1:
+                errs.append(f"{name} must be a positive integer")
+        for name in ("learning_rate", "epochs"):
+            value = getattr(self, name)
+            if not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+                errs.append(f"{name} must be finite and > 0")
+        if not isinstance(self.lora_dropout, (int, float)) or not 0 <= self.lora_dropout < 1:
             errs.append("lora_dropout must be in [0, 1)")
-        if self.learning_rate <= 0:
-            errs.append("learning_rate must be > 0")
-        if self.per_device_batch_size < 1 or self.grad_accum < 1:
-            errs.append("batch sizes must be >= 1")
-        if self.max_seq_len < 32:
-            errs.append("max_seq_len must be >= 32")
-        if self.text_field and self.text_field == self.prompt_field:
-            errs.append("text_field and prompt_field must differ")
+        if not isinstance(self.warmup_ratio, (int, float)) or not 0 <= self.warmup_ratio <= 1:
+            errs.append("warmup_ratio must be in [0, 1]")
+        if type(self.max_steps) is not int or (self.max_steps != -1 and self.max_steps < 1):
+            errs.append("max_steps must be -1 or a positive integer")
+        if type(self.max_seq_len) is not int or self.max_seq_len < 32:
+            errs.append("max_seq_len must be an integer >= 32")
+        if not isinstance(self.target_modules, (list, tuple)) or not self.target_modules or any(
+                not isinstance(x, str) or not x.strip() for x in self.target_modules):
+            errs.append("target_modules must be a nonempty list of names")
+        for name in ("load_in_4bit", "gradient_checkpointing", "packing"):
+            if type(getattr(self, name)) is not bool:
+                errs.append(f"{name} must be a boolean")
         return errs
 
     @property
@@ -71,7 +78,7 @@ class TrainConfig:
         d = json.loads(s)
         if isinstance(d.get("target_modules"), list):
             d["target_modules"] = tuple(d["target_modules"])
-        known = {f for f in cls.__dataclass_fields__}  # type: ignore[attr-defined]
+        known = {f for f in cls.__dataclass_fields__}
         unknown = set(d) - known
         if unknown:
             raise ValueError(f"unknown config keys: {sorted(unknown)}")
@@ -79,24 +86,16 @@ class TrainConfig:
 
     @classmethod
     def from_yaml(cls, path: str) -> "TrainConfig":
-        # minimal YAML subset: flat "key: value" lines, no nesting
-        d: dict = {}
-        for line in open(path):
-            line = line.split("#", 1)[0].rstrip()
-            if not line.strip() or ":" not in line:
-                continue
-            k, v = line.split(":", 1)
-            k, v = k.strip(), v.strip()
-            if v.startswith("[") and v.endswith("]"):
-                d[k] = tuple(x.strip().strip("'\"") for x in v[1:-1].split(",") if x.strip())
-            elif v.lower() in ("true", "false"):
-                d[k] = v.lower() == "true"
-            else:
+        import yaml
+
+        with open(path) as f:
+            d = yaml.safe_load(f)
+        if not isinstance(d, dict):
+            raise ValueError("config must be a YAML mapping")
+        for key in ("learning_rate", "epochs", "warmup_ratio", "lora_dropout"):
+            if key in d and isinstance(d[key], str):
                 try:
-                    d[k] = int(v)
+                    d[key] = float(d[key])
                 except ValueError:
-                    try:
-                        d[k] = float(v)
-                    except ValueError:
-                        d[k] = v.strip("'\"")
-        return cls(**d)
+                    pass
+        return cls.from_json(json.dumps(d))
