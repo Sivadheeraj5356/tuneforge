@@ -72,6 +72,27 @@ def _cmd_generate(args) -> int:
     return 0
 
 
+def _cmd_preflight(args) -> int:
+    from tuneforge.config import TrainConfig
+    from tuneforge.preflight import run_preflight
+    cfg = TrainConfig.from_yaml(args.config) if args.config else TrainConfig(
+        model=args.model, dataset=args.dataset)
+    result = run_preflight(cfg, gpu_gb=args.gpu_gb)
+    for c in result.checks:
+        print(f"{c.status.upper():4}  {c.name}: {c.detail}")
+    counts = result.counts()
+    print(f"preflight: {counts['pass']} passed, {counts['warn']} warnings, "
+          f"{counts['fail']} failed")
+    return 0 if result.ok else 1
+
+
+def _cmd_report(args) -> int:
+    from tuneforge.report import write_run_card
+    path = write_run_card(args.run_dir, out_path=args.out)
+    print(f"run card written to {path}")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="tuneforge",
         description="Memory-efficient LLM fine-tuning toolkit")
@@ -117,6 +138,19 @@ def main(argv=None) -> int:
     g.add_argument("--prompt", required=True)
     g.add_argument("--max-new-tokens", type=int, default=128)
     g.set_defaults(fn=_cmd_generate)
+
+    pf = sub.add_parser("preflight", help="check config, dataset, deps and memory before training")
+    pf.add_argument("--config", help="YAML config path")
+    pf.add_argument("--model")
+    pf.add_argument("--dataset")
+    pf.add_argument("--gpu-gb", type=float,
+                    help="GPU VRAM in GB; autodetected when omitted")
+    pf.set_defaults(fn=_cmd_preflight)
+
+    r = sub.add_parser("report", help="write a run card for a finished run")
+    r.add_argument("run_dir")
+    r.add_argument("--out", help="output path (default: RUN_CARD.md in the run dir)")
+    r.set_defaults(fn=_cmd_report)
 
     args = ap.parse_args(argv)
     try:

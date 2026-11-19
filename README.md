@@ -65,6 +65,22 @@ Packing is delegated to TRL once, using token lengths. Precision is selected by 
 
 Some Colab installations contain incompatible `torchao` versions. TuneForge does not use torchao quantization. The earlier verified run required uninstalling torchao or updating it to a compatible version; inspect the error and your environment before changing installed packages.
 
+## Preflight and run cards
+
+`preflight` checks a training plan before any GPU time is spent: config validity, dataset existence and field names for local files, whether the training dependencies import, and the estimated memory fit against a GPU you name or the one it detects. It exits nonzero when something would fail at train time.
+
+```bash
+tuneforge preflight --config examples/smoke_config.yaml --gpu-gb 16
+```
+
+Hub datasets are downloaded at train time, so preflight can only note them; it cannot check their fields ahead of time.
+
+`report` writes a `RUN_CARD.md` for a finished run from the files the run leaves behind: the training config, the PEFT adapter config, and the trainer state (from the run directory or a checkpoint inside it), plus the Python, torch and GPU it can see on the machine. Anything it cannot find is listed under "Not recorded" rather than guessed.
+
+```bash
+tuneforge report runs/smoke
+```
+
 ## Generate and evaluate
 
 ```bash
