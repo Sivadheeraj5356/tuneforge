@@ -33,7 +33,7 @@ Suggested demonstration order:
 
 | Check | Result | Meaning |
 | --- | --- | --- |
-| November 19, 2026 regression suite | 50 tests passed on Python 3.10 | Config, CLI, memory planning, data utilities, scoring, GPU dtype selection and export failure paths |
+| November 19, 2026 regression suite | 62 tests passed on Python 3.10 | Config, CLI, memory planning, data utilities, scoring, GPU dtype selection, preflight checks, run cards and export failure paths |
 | November 19, 2026 CPU demonstration | Train, adapter save/reload, generation and merge passed | Tiny random model, mechanics only; no GPU and no quality claim |
 | November 6, 2026 recorded real-model run | Base execution accuracy 0.30, tuned 0.53 on 100 held-out examples | Qwen3-1.7B text-to-SQL, free Colab T4; not rerun by the November 19 CPU checks |
 | Same real-model run | Exact match 0.08 to 0.33; Q4_K_M GGUF 1,107,408,736 bytes | Historical run evidence, not a general performance guarantee |
