@@ -13,7 +13,7 @@ from tuneforge.config import TrainConfig
 
 DEPENDENCIES = (
     "torch", "transformers", "datasets", "peft", "trl",
-    "bitsandbytes", "unsloth", "yaml",
+    "bitsandbytes", "yaml",
 )
 
 PASS, WARN, FAIL = "pass", "warn", "fail"
