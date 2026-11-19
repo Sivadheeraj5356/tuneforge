@@ -57,7 +57,7 @@ tuneforge plan Qwen/Qwen3-1.7B --gpu-gb 16
 tuneforge train --config examples/smoke_config.yaml
 ```
 
-Data preparation downloads a public Hugging Face dataset. The default 4-bit configuration needs CUDA. CPU training must set `load_in_4bit: false`; use the small CPU demo rather than loading a full model on a low-memory machine.
+Data preparation downloads a public Hugging Face dataset. The default 4-bit configuration needs CUDA. CPU training works with `load_in_4bit: false`: precision falls back to FP32 and the train/save/generate/merge pipeline runs without a GPU, as the CPU demo shows. It is practical for small models and pipeline checks; a free Colab GPU remains the realistic route for billion-parameter models. For comparison, Unsloth's documented CPU support covers chat and data preparation only - its training path requires an NVIDIA, AMD or Intel GPU, or a Mac.
 
 Training settings are in `TrainConfig`: model, dataset, output directory, adapter rank/alpha/dropout, target modules, batch size, gradient accumulation, sequence length, learning rate, epochs or maximum steps, and packing. JSON and YAML configs are supported. Local datasets use `local:path.jsonl` or `local:path.json`, with `prompt` and `completion` fields by default. For raw-text SFT, set `text_field` to the dataset's text field.
 
