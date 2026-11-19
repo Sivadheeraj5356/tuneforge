@@ -18,7 +18,7 @@ python -m pytest -q
 python examples/cpu_demo.py
 ```
 
-The repository is private, so cloning requires an account with access. Model training in the CPU demo itself is entirely local.
+Model training in the CPU demo is entirely local.
 
 The demo creates a tiny randomly initialized Qwen3-architecture model and a local tokenizer, trains a LoRA adapter for two steps on eight synthetic SQL examples, reloads the adapter for generation, and saves a merged model. Outputs are in `runs/cpu-demo/`. It ends with `CPU demo complete`. This demonstrates the real pipeline, not useful SQL ability. Random-model generation is not a quality benchmark.
 
